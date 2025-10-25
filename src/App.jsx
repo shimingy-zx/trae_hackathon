@@ -198,10 +198,10 @@ const getCozeAnswer = async (question) => {
     });
 
     if (response.chat.status === ChatStatus.COMPLETED && response.messages) {
-      // 返回助手的回答
+      // 返回助手的回答，格式化为 [role]:[type]:content 的形式
       return response.messages
         .filter((msg) => msg.role === "assistant")
-        .map((msg) => msg.content);
+        .map((msg) => `[${msg.role}]:[${msg.content_type}]:${msg.content}`);
     }
 
     return ["No response from bot"];
@@ -214,7 +214,7 @@ const getCozeAnswer = async (question) => {
 function App() {
   const [question, setQuestion] = useState("");
   const [answers, setAnswers] = useState([]);
-  const [hasConfirmed, setHasConfirmed] = useState(false);
+  const [setHasConfirmed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const textareaRef = useRef(null);
 
