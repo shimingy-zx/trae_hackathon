@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import styled from "styled-components";
 import { SendOutlined } from "@ant-design/icons";
+import { RoleType, ChatStatus } from "@coze/api";
+import { client, botId } from "./client";
 
 // 样式组件
 const Container = styled.div`
@@ -176,109 +178,67 @@ const SendIcon = styled(SendOutlined)`
   }
 `;
 
-const MoreButton = styled.button`
-  width: 100%;
-  padding: 12px;
-  background: transparent;
-  border: 1px solid #1890ff;
-  color: #1890ff;
-  border-radius: 8px;
-  cursor: pointer;
-  margin-top: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.3s ease;
-
-  &:hover {
-    background: rgba(24, 144, 255, 0.05);
-    box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+// 使用 Coze API 获取回答
+const getCozeAnswer = async (question) => {
+  if (!botId) {
+    console.error("botId is required");
+    return ["Error: Bot ID is not configured"];
   }
 
-  &:active {
-    transform: translateY(1px);
+  try {
+    const response = await client.chat.createAndPoll({
+      bot_id: botId,
+      additional_messages: [
+        {
+          role: RoleType.User,
+          content: question,
+          content_type: "text",
+        },
+      ],
+    });
+
+    if (response.chat.status === ChatStatus.COMPLETED && response.messages) {
+      // 返回助手的回答
+      return response.messages
+        .filter((msg) => msg.role === "assistant")
+        .map((msg) => msg.content);
+    }
+
+    return ["No response from bot"];
+  } catch (error) {
+    console.error("Error calling Coze API:", error);
+    return ["Error: Failed to get response from bot"];
   }
-
-  &:disabled {
-    border-color: #d9d9d9;
-    color: #d9d9d9;
-    cursor: not-allowed;
-    box-shadow: none;
-  }
-`;
-
-const AnswerCount = styled.div`
-  text-align: right;
-  color: #999;
-  font-size: 12px;
-  margin-top: 8px;
-`;
-
-// 模拟回答生成器
-const generateAnswers = (question) => {
-  const baseAnswers = [
-    `关于"${question}"，我建议可以这样处理...`,
-    `针对"${question}"这个问题，建议您...`,
-    `您提到的"${question}"，可以考虑以下方案...`,
-  ];
-  return baseAnswers;
 };
-
-// 模拟更多回答生成器
-const generateMoreAnswers = (question, currentCount) => {
-  const templates = [
-    `此外，关于"${question}"，还可以...`,
-    `对于"${question}"，还有一种解决方案是...`,
-    `处理"${question}"时，也可以考虑...`,
-    `补充一点，针对"${question}"...`,
-    `另外一个处理"${question}"的思路是...`,
-    `从其他角度看"${question}"，可以...`,
-    `结合实际情况，对于"${question}"...`,
-    `基于最佳实践，处理"${question}"时...`,
-    `考虑到效率，解决"${question}"可以...`,
-  ];
-
-  // 随机选择两个不重复的回答
-  const remainingAnswers = templates.slice(currentCount - 3);
-  return remainingAnswers.slice(0, 2);
-};
-
-const MAX_ANSWERS = 12;
 
 function App() {
   const [question, setQuestion] = useState("");
   const [answers, setAnswers] = useState([]);
   const [hasConfirmed, setHasConfirmed] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const textareaRef = useRef(null);
 
   const adjustHeight = () => {
     const textarea = textareaRef.current;
     if (textarea) {
-      // 重置高度以获取正确的 scrollHeight
       textarea.style.height = "auto";
-      // 计算新高度（考虑 padding）
-      const newHeight = Math.min(
-        Math.max(42, textarea.scrollHeight), // 最小高度 42px
-        126 // 最大高度：5行文本 = (14px * 1.5 * 5) + (10px * 2) = 126px
-      );
+      const newHeight = Math.min(Math.max(42, textarea.scrollHeight), 126);
       textarea.style.height = `${newHeight}px`;
     }
   };
 
-  // 监听输入变化时调整高度
   useEffect(() => {
     adjustHeight();
   }, [question]);
 
-  const handleConfirm = () => {
-    if (question.trim()) {
-      setAnswers(generateAnswers(question));
+  const handleConfirm = async () => {
+    if (question.trim() && !isLoading) {
+      setIsLoading(true);
+      const cozeAnswers = await getCozeAnswer(question);
+      setAnswers(cozeAnswers);
       setHasConfirmed(true);
+      setIsLoading(false);
     }
-  };
-
-  const handleMoreAnswers = () => {
-    const moreAnswers = generateMoreAnswers(question, answers.length);
-    setAnswers([...answers, ...moreAnswers]);
   };
 
   const handleKeyPress = (e) => {
@@ -302,9 +262,13 @@ function App() {
           onChange={handleInput}
           onKeyDown={handleKeyPress}
           rows={1}
+          disabled={isLoading}
         />
-        <ConfirmButton onClick={handleConfirm} disabled={!question.trim()}>
-          确认
+        <ConfirmButton
+          onClick={handleConfirm}
+          disabled={!question.trim() || isLoading}
+        >
+          {isLoading ? "请稍等..." : "确认"}
         </ConfirmButton>
       </InputContainer>
 
@@ -317,15 +281,6 @@ function App() {
             </div>
           </AnswerItem>
         ))}
-
-        {hasConfirmed && answers.length < MAX_ANSWERS && (
-          <>
-            <MoreButton onClick={handleMoreAnswers}>更多回答</MoreButton>
-            <AnswerCount>
-              {answers.length} / {MAX_ANSWERS} 条回答
-            </AnswerCount>
-          </>
-        )}
       </AnswersContainer>
     </Container>
   );
